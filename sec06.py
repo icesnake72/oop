@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 
 from bs4 import BeautifulSoup
+import csv, datetime
 
 
 
@@ -57,7 +58,6 @@ class CheckIterable:
     return True
 
 
-
 class StockInfoGetter(UrlHandler, CheckIterable):
   def __init__(self) -> None:
     super().__init__()    
@@ -70,17 +70,21 @@ class StockInfoGetter(UrlHandler, CheckIterable):
   def update(self):
     self.init(self)
     
+  def _clean_string(self, val:str) -> str:
+    val = val.replace('상승', '')
+    val = val.replace('하락', '-')
+    return val.strip().replace(',', '').replace('%', '').replace('N/A', '0').replace('\n', '').replace('\t', '').replace('\r', '')
+    
+  
+    
   def convertToNumeric(self, val:str) -> any:
     val = val.replace(',', '')
     val = val.replace('%', '')
-    val = val.replace('N/A', '0')
+    val = val.replace('N/A', '0')    
     try:
       return int(val)
-    except ValueError:
-      try:
-        return float(val)
-      except ValueError:
-        return val
+    except ValueError as e:
+      raise ValueError(f"ValueError : {e}")
     
   def updateToNumeric(self, liStr:list) -> any:
     if not self.isIterable(liStr):
@@ -91,6 +95,19 @@ class StockInfoGetter(UrlHandler, CheckIterable):
       retLi.append(self.convertToNumeric(item))
       
     return retLi
+  
+  def _has_blank(self, td):
+    return td.has_attr('class') and (td['class'][0].startswith('blank') or td['class'][0].startswith('division_line'))
+  
+  def _is_title(self, td):
+    return td.has_attr('class') and td['class'][0].startswith('title')
+  
+  def _has_blank_td(self, tr):
+    tds = tr.find_all('td')
+    for td in tds:
+      if self._has_blank(td):
+        return True
+    return False
     
   def _parseHtml(self, htmlData):
     bs = BeautifulSoup(htmlData, 'html.parser')    
@@ -98,74 +115,94 @@ class StockInfoGetter(UrlHandler, CheckIterable):
     if not self.isIterable(table):
       return
     
-    self.liHead = [item for item in table.thead.text.split('\n') if item ]    
+    now = datetime.datetime.now()
+    current_datetime = now.strftime("%Y%m%d_%H%M%S")
+    with open(f'output_{current_datetime}.csv', 'w', newline='', encoding='utf-8-sig') as csvfile:
+      writer = csv.writer(csvfile, delimiter=',')
+      
+      # self.liHead = [item for item in table.thead.text.split('\n') if item ]    
+      self.liHead = [item.text for item in table.thead.tr if item != '\n' ]    
+      writer.writerow(self.liHead)
+      # print(self.liHead)
+      
+      trs = table.tbody.find_all('tr')
+      for i, tr in enumerate(trs):
+        tds = tr.find_all('td')
+        if self._has_blank_td(tr):
+          continue
+        
+        li = [self._clean_string(item.text) for item in tds ]      
+        # print(li)
+        writer.writerow(li)
     
-    litr = list()
-    trs = table.tbody.find_all('tr', attrs={'onmouseover':True})
-    for tr in trs:
-      # tds = tr.find_all('td', class_=['blank_09', 'blank_06', 'blank_08', 'division_line', 'division_line_1'])
-      # if len(tds) > 0: 
-      #   continue
+    # litr = list()
+    # trs = table.tbody.find_all('tr', attrs={'onmouseover':True})
+    # for tr in trs:
+    #   # tds = tr.find_all('td', class_=['blank_09', 'blank_06', 'blank_08', 'division_line', 'division_line_1'])
+    #   # if len(tds) > 0: 
+    #   #   continue
       
-      # tds = tr.find_all('td', class_='blank_08')
-      # if len(tds) > 0: 
-      #   continue
+    #   # tds = tr.find_all('td', class_='blank_08')
+    #   # if len(tds) > 0: 
+    #   #   continue
       
-      # tds = tr.find_all('td', class_='blank_06')
-      # if len(tds) > 0: 
-      #   continue
+    #   # tds = tr.find_all('td', class_='blank_06')
+    #   # if len(tds) > 0: 
+    #   #   continue
       
-      # tds = tr.find_all('td', class_='division_line')
-      # if len(tds) > 0: 
-      #   continue
+    #   # tds = tr.find_all('td', class_='division_line')
+    #   # if len(tds) > 0: 
+    #   #   continue
       
-      # tds = tr.find_all('td', class_='division_line_1')
-      # if len(tds) > 0: 
-      #   continue
+    #   # tds = tr.find_all('td', class_='division_line_1')
+    #   # if len(tds) > 0: 
+    #   #   continue
       
-      tds = tr.find_all('td')      
-      li = list()
-      for td in tds:
-        a = td.find_all('a', class_="title")
-        if a:
-          li.append(a.text.strip())
-        else:
-          li.append( self.convertToNumeric(td.text.strip()) )
+    #   tds = tr.find_all('td')      
+    #   li = list()
+    #   for td in tds:
+    #     a = td.find_all('a', class_="title")
+    #     if a:
+    #       li.append(a.text.strip())
+    #     else:
+    #       li.append( self.convertToNumeric(td.text.strip()) )
                     
-                    # int(td.text.strip()) if td.text.strip().isnumeric() else td.text.strip() )
-      if len(li):
-        litr.append(li)
+    #                 # int(td.text.strip()) if td.text.strip().isnumeric() else td.text.strip() )
+    #   if len(li):
+    #     litr.append(li)
     
-    # print(litr)
-    litr = [item for item in litr if len(item)]     
-    self.df = pd.DataFrame(litr, index=None, columns=self.liHead) #, columns=self.liHead)
-    # print(self.df)
+    # # print(litr)
+    # litr = [item for item in litr if len(item)]     
+    # self.df = pd.DataFrame(litr, index=None, columns=self.liHead) #, columns=self.liHead)
+    # # print(self.df)
   
-# if __name__ == '__main__':
-print(__name__)
-# fp = fm.FontProperties(family=['AppleGothic'], size=12)
+if __name__ == '__main__':
+  print(__name__)
+  fp = fm.FontProperties(family=['AppleGothic'], size=12)
 
-# sGetter = StockInfoGetter()
-# res = sGetter.init()
-# df = sGetter.df
-# df.loc[df['등락률']<0, '전일비'] = -df['전일비']
-# df.to_excel('output.xlsx', index=False)
-# df = df.reset_index(drop=True)
-# df.drop('N', axis=1, inplace=True)
-# df.drop('토론실', axis=1, inplace=True)
-# df = df.set_index('종목명')
-# print(df.info())
-# df.corr().to_excel('parse.xlsx')
-# # print(df.to_string())
-# df.plot()
+  sGetter = StockInfoGetter()
+  res = sGetter.init()
+  
+  
+  # df = sGetter.df
+  # df.loc[df['등락률']<0, '전일비'] = -df['전일비']
+  # df.to_excel('output.xlsx', index=False)
+  # df = df.reset_index(drop=True)
+  # df.drop('N', axis=1, inplace=True)
+  # df.drop('토론실', axis=1, inplace=True)
+  # df = df.set_index('종목명')
+  # print(df.info())
+  # df.corr().to_excel('parse.xlsx')
+  # # print(df.to_string())
+  # df.plot()
 
-# print(mpl.rcParams['font.family']) # font
-# print(mpl.rcParams['font.size']) # size
+  # print(mpl.rcParams['font.family']) # font
+  # print(mpl.rcParams['font.size']) # size
 
-# plt.rcParams['font.family'] = 'AppleGothic'
-# mpl.rcParams['axes.unicode_minus'] = False
-# plt.show()
+  # plt.rcParams['font.family'] = 'AppleGothic'
+  # mpl.rcParams['axes.unicode_minus'] = False
+  # plt.show()
 
-# print(df.corr())
-# print(sGetter.df.loc[[0,2]])
-# print(sGetter.df.info())
+  # print(df.corr())
+  # print(sGetter.df.loc[[0,2]])
+  # print(sGetter.df.info())
