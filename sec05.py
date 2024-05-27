@@ -58,13 +58,6 @@ class calculator:
     finally:
       return (mok, nam)
     
-class Person:
-  def __init__(self) -> None:
-    self.__name:str = "Unknown"
-    
-
-# kim = Person()
-# print(kim.__name)
 
 try:
   tp = calculator.divide2(10, 0)
